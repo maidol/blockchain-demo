@@ -31,15 +31,32 @@ router.get('/mine', (ctx, next) => {
 
 router.get('/chain', (ctx, next) => {
   ctx.body = {
-    'chain': bc.chains,
-    'length': bc.chains.length,
+    'chain': bc.chain,
+    'length': bc.chain.length,
   };
 })
+
+router.post('/nodes', (ctx, next) => {
+  let nodes = ctx.request.body;
+  nodes.forEach(el => {
+    if(el) bc.registerNode(el);
+  });
+  ctx.body = { ok: 1 };
+})
+
+router.get('/nodes/resolve', async (ctx, next) => {
+  let replaced = await bc.resolveConflicts();
+  if(replaced) {
+    return ctx.body = { ok: 1 };
+  }
+  return ctx.body = { ok: 0 };
+});
 
 app.use(new BodyParse());
 app.use(router.routes());
 
 const server = http.createServer(app.callback());
-server.listen(8000, function(){
-  console.log('listenning on 8000');
+const PORT = process.env.PORT || 8000
+server.listen( PORT, function(){
+  console.log(`listenning on ${PORT}`);
 });

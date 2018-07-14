@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const uuid = require('node-uuid');
+const rp = require('request-promise-native')
 
-const CHAINS = Symbol('#CHAINS');
+const CHAIN = Symbol('#CHAIN');
 const CURRENT_TRANSACTIONS = Symbol('#CURRENT_TRANSACTIONS');
 const NODE_IDENTIFIER = Symbol('#NODE_IDENTIFIER');
 
@@ -12,28 +13,31 @@ const NODE_IDENTIFIER = Symbol('#NODE_IDENTIFIER');
 class BlockChain {
   constructor(){
     this[NODE_IDENTIFIER] = uuid.v1().replace('-', '');
-    this.nodes = new Set();
-    this[CHAINS] = [];
+    this.nodes = new Set(['localhost:8000', 'localhost:5000', 'localhost:5001']);
+    this[CHAIN] = [];
     this[CURRENT_TRANSACTIONS] = [];
     this.newBlock(1, 100);
   }
-  get chains(){
-    return this[CHAINS];
+  get chain(){
+    return this[CHAIN];
+  }
+  set chain(val){
+    this[CHAIN] = val;
   }
   get nodeIdentifier(){
     return this[NODE_IDENTIFIER];
   }
   newBlock(proof, previousHash){
     const block = {
-      'index': this[CHAINS].length + 1,
+      'index': this[CHAIN].length + 1,
       'timestamp': Math.floor(Date.now()/1000),
       'transactions': this[CURRENT_TRANSACTIONS],
       'proof': proof,
-      'previousHash': previousHash || this.hash(this[CHAINS][this[CHAINS].length - 1]),
+      'previousHash': previousHash || this.hash(this[CHAIN][this[CHAIN].length - 1]),
     };
 
     this[CURRENT_TRANSACTIONS] = [];
-    this[CHAINS].push(block);
+    this[CHAIN].push(block);
     return block;
   }
   newTransaction(sender, recipient, amount){
@@ -51,7 +55,7 @@ class BlockChain {
     return sha256.update(blockStrings).digest('hex');
   }
   lastBlock(){
-    return this[CHAINS][this[CHAINS].length - 1];
+    return this[CHAIN][this[CHAIN].length - 1];
   }
   pow(lastProof = 0){
     let proof = 0;
@@ -72,9 +76,67 @@ class BlockChain {
   registerNode(node){
     this.nodes.add(node);
   }
-  validChain(chain){}
-  resolveConflicts(){}
+  /**
+   * 验证区块链有效性
+   * 遍历每个块验证hash和proof
+   * @param {*} chain
+   * @memberof BlockChain
+   */
+  validChain(chain){
+    let lastBlock = chain[0];
+    let currentIndex = 1;
 
+    while(currentIndex < chain.length){
+      let block = chain[currentIndex];
+      console.log(lastBlock);
+      console.log(block);
+      console.log('\n---------------\n');
+      if(block['previousHash'] !== this.hash(lastBlock)){
+        return false;
+      }
+      if(!this.validProof(lastBlock['proof'], block['proof'])){
+        return false;
+      }
+
+      lastBlock = block;
+      currentIndex++;
+    }
+    return true;
+  }
+  /**
+   * 同步区块链
+   *
+   * @returns
+   * @memberof BlockChain
+   */
+  async resolveConflicts(){
+    let neighbours = this.nodes;
+    let newChain;
+
+    let maxLength = this.chain.length;
+
+    let prs = [...neighbours].map(el => {
+      try {
+        return rp.get(`http://${el}/chain`, { json: true });
+      } catch (error) {
+        return void 0;
+      }
+    });
+    let results = await Promise.all(prs);
+    results.forEach(el => {
+      if(!el) return;
+      let { length, chain } = el;
+      if(length > maxLength && this.validChain(chain)){
+        maxLength = length;
+        newChain = chain;
+      }
+    });
+    if(newChain){
+      this.chain = newChain;
+      return true;
+    }
+    return false;
+  }
 }
 
 module.exports = BlockChain;
