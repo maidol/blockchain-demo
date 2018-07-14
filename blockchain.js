@@ -21,9 +21,6 @@ class BlockChain {
   get chain(){
     return this[CHAIN];
   }
-  set chain(val){
-    this[CHAIN] = val;
-  }
   get nodeIdentifier(){
     return this[NODE_IDENTIFIER];
   }
@@ -132,7 +129,7 @@ class BlockChain {
       }
     });
     if(newChain){
-      this.chain = newChain;
+      this[CHAIN] = newChain;
       return true;
     }
     return false;
