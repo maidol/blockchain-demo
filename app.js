@@ -9,6 +9,7 @@ const bc = new BlockChain();
 const app = new Koa();
 const router = new KoaRouter();
 
+// 创建交易
 router.post('/transactions', (ctx, next) => {
   let { sender, recipient, amount } = ctx.request.body;
   if(!ctx.request.body || !sender || !recipient || !amount) ctx.throw(400, '错误的请求参数');
@@ -16,6 +17,7 @@ router.post('/transactions', (ctx, next) => {
   ctx.body = { index };
 });
 
+// 挖矿，记录
 router.get('/mine', (ctx, next) => {
   bc.newTransaction({
     sender: 0,
@@ -29,6 +31,7 @@ router.get('/mine', (ctx, next) => {
   ctx.body = block;
 });
 
+// 查询区块链
 router.get('/chain', (ctx, next) => {
   ctx.body = {
     'chain': bc.chain,
@@ -36,6 +39,7 @@ router.get('/chain', (ctx, next) => {
   };
 })
 
+// 注册节点
 router.post('/nodes', (ctx, next) => {
   let nodes = ctx.request.body;
   nodes.forEach(el => {
@@ -44,6 +48,7 @@ router.post('/nodes', (ctx, next) => {
   ctx.body = { ok: 1 };
 })
 
+// 共识，同步区块链
 router.get('/nodes/resolve', async (ctx, next) => {
   let replaced = await bc.resolveConflicts();
   if(replaced) {

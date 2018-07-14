@@ -9,6 +9,8 @@ const NODE_IDENTIFIER = Symbol('#NODE_IDENTIFIER');
 /**
  * BlockChain
  * 用以管理链条，存储交易，加入新区块
+ *
+ * @class BlockChain
  */
 class BlockChain {
   constructor(){
@@ -68,7 +70,9 @@ class BlockChain {
   }
   /**
    * 注册节点
-   * @param {http://localhost:5000} node 
+   *
+   * @param {*} node
+   * @memberof BlockChain
    */
   registerNode(node){
     this.nodes.add(node);
@@ -101,7 +105,7 @@ class BlockChain {
     return true;
   }
   /**
-   * 同步区块链
+   * 共识，同步区块链
    *
    * @returns
    * @memberof BlockChain
