@@ -117,6 +117,8 @@ class BlockChain {
     this.notify('join', this.current);
     // 同步节点列表
     this.syncNodes();
+    // 同步区块链
+    this.resolveConflicts(true);
   }
   async syncNodes(){
     let ps = [...this.nodes].map(el => {
@@ -177,7 +179,7 @@ class BlockChain {
    * @returns
    * @memberof BlockChain
    */
-  async resolveConflicts(){
+  async resolveConflicts(isNewNode){
     let neighbours = this.nodes;
     let newChain;
 
@@ -201,8 +203,10 @@ class BlockChain {
     });
     if(newChain){
       this[CHAIN] = newChain;
-      // 通知其他节点，同步
-      this.notify('syncChain');
+      if(!isNewNode){
+        // 通知其他节点，同步
+        this.notify('syncChain');
+      }
       return true;
     }
     return false;
