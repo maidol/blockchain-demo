@@ -13,15 +13,31 @@ const NODE_IDENTIFIER = Symbol('#NODE_IDENTIFIER');
  * @class BlockChain
  */
 class BlockChain {
-  constructor(){
-    this[NODE_IDENTIFIER] = uuid.v1().replace('-', '');
-    this.nodes = new Set(['localhost:8000', 'localhost:5000', 'localhost:5001']);
+  /**
+   *Creates an instance of BlockChain.
+   * @param { node当前节点, seedNodes种子节点 } { node, seedNodes = ['localhost:8000'] }
+   * @memberof BlockChain
+   */
+  constructor({ node, seedNodes = ['localhost:8000'] }){
+    this[NODE_IDENTIFIER] = uuid.v1().replace(/-/g, '');
+    this.nodes = new Set(seedNodes.filter(el => el !== node));
     this[CHAIN] = [];
     this[CURRENT_TRANSACTIONS] = [];
     this.newBlock(1, 100);
+    this.current = node;
+    this.init();
   }
+  /**
+   * 初始化
+   *
+   * @memberof BlockChain
+   */
+  init(){}
   get chain(){
     return this[CHAIN];
+  }
+  get transactions(){
+    return this[CURRENT_TRANSACTIONS];
   }
   get nodeIdentifier(){
     return this[NODE_IDENTIFIER];
@@ -39,12 +55,19 @@ class BlockChain {
     this[CHAIN].push(block);
     return block;
   }
-  newTransaction(sender, recipient, amount){
-    this[CURRENT_TRANSACTIONS].push({
+  newTransaction(sender, recipient, amount, tid, fromNode, isSelfMined){
+    if(this[CURRENT_TRANSACTIONS].find(el => el.tid === tid) || fromNode === this.current){
+      return;
+    }
+    let transaction = {
+      tid: tid || uuid.v1().replace(/-/g, ''),
       sender,
       recipient,
       amount,
-    });
+    };
+    this[CURRENT_TRANSACTIONS].push(transaction);
+    // 通知新增交易
+    if(!isSelfMined) this.notify('newTransaction', transaction, fromNode || this.current);
     return this.lastBlock().index + 1;
   }
   hash(block){
@@ -69,13 +92,57 @@ class BlockChain {
     return guessHash.slice(guessHash.length - 4) === '0000';
   }
   /**
+   * 挖矿
+   *
+   * @returns
+   * @memberof BlockChain
+   */
+  mine(){
+    this.newTransaction(
+      0,
+      this.nodeIdentifier,
+      1,
+      uuid.v1().replace(/-/g, ''),
+      undefined,
+      true,
+    );
+    let lastBlock = this.lastBlock();
+    let lastProof = lastBlock['proof'];
+    let proof = this.pow(lastProof);
+    let block = this.newBlock(proof);
+    this.notify('syncChain');
+    return block;
+  }
+  join(){
+    this.notify('join', this.current);
+    // 同步节点列表
+    this.syncNodes();
+  }
+  async syncNodes(){
+    let ps = [...this.nodes].map(el => {
+      return rp.get(`http://${el}/nodes`, { json: true });
+    });
+    let nodesList = await Promise.all(ps);
+    nodesList.forEach(nsl => {
+      nsl.forEach(node => {
+        if(node !== this.current){
+          this.nodes.add(node);
+        }
+      });
+    });
+    console.log('syncNodes', [...this.nodes]);
+  }
+  /**
    * 注册节点
    *
    * @param {*} node
    * @memberof BlockChain
    */
   registerNode(node){
-    this.nodes.add(node);
+    if(!this.nodes.has(node) && this.current !== node){
+      this.notify('join', node); // 通知其他节点有新节点加入
+      this.nodes.add(node);
+    }
   }
   /**
    * 验证区块链有效性
@@ -134,10 +201,54 @@ class BlockChain {
     });
     if(newChain){
       this[CHAIN] = newChain;
+      // 通知其他节点，同步
+      this.notify('syncChain');
       return true;
     }
     return false;
   }
+  /**
+   * 广播消息
+   *
+   * @param { 消息类型 } action
+   * @memberof BlockChain
+   */
+  notify(action, data, fromNode){
+    switch (action) {
+      case 'syncChain': // 挖矿成功
+        [...this.nodes].filter(el => el !== this.current).map(el => {
+          try {
+            console.log(`syncChain, notify to ${el}`);
+            return rp.get(`http://${el}/nodes/resolve`);
+          } catch (error) {
+            return void 0;
+          }
+        });
+        break;
+      case 'join': // 新节点加入
+        [...this.nodes].filter(el => el !== this.current).map(el => {
+          try {
+            console.log(`join, notify to ${el}`);
+            return rp.post(`http://${el}/nodes`, { json: true, body: [ data ] });
+          } catch (error) {
+            return void 0;
+          }
+        });
+        break;
+      case 'newTransaction': // 同步交易
+        [...this.nodes].filter(el => el !== this.current || el !== fromNode).map(el => {
+          try {
+            console.log(`newTransaction, from ${fromNode}, notify to ${el}`);
+            return rp.post(`http://${el}/transactions?fromNode=${this.current}`, { json: true, body: data });
+          } catch (error) {
+            return void 0;
+          }
+        });
+        break;
+      default:
+        break;
+    }
+  };
 }
 
 module.exports = BlockChain;
